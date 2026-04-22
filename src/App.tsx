@@ -21,7 +21,8 @@ import {
   Maximize,
   Volume2,
   VolumeX,
-  BookOpen
+  BookOpen,
+  Home
 } from 'lucide-react';
 
 // --- Types & Interfaces ---
@@ -203,7 +204,71 @@ export default function App() {
   const [muted, setMuted] = useState(false);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const bgMusicNodeRef = useRef<OscillatorNode | null>(null);
+  const bgGainNodeRef = useRef<GainNode | null>(null);
 
+  const stopMusic = useCallback(() => {
+    if (bgMusicNodeRef.current) {
+      bgMusicNodeRef.current.stop();
+      bgMusicNodeRef.current.disconnect();
+      bgMusicNodeRef.current = null;
+    }
+  }, []);
+
+  const startDramaticMusic = useCallback(() => {
+    if (muted) return;
+    try {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      const ctx = audioContextRef.current;
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+      
+      const oscillator = ctx.createOscillator();
+      const gain = ctx.createGain();
+      
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(60, ctx.currentTime);
+      
+      // Dramatic drone effect
+      oscillator.frequency.exponentialRampToValueAtTime(40, ctx.currentTime + 2);
+      oscillator.frequency.exponentialRampToValueAtTime(60, ctx.currentTime + 4);
+      
+      gain.gain.setValueAtTime(0.01, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.05, ctx.currentTime + 1);
+      
+      oscillator.connect(gain);
+      gain.connect(ctx.destination);
+      
+      oscillator.start();
+      bgMusicNodeRef.current = oscillator;
+      bgGainNodeRef.current = gain;
+      
+      // Auto-loop modulation
+      const modulator = ctx.createOscillator();
+      const modGain = ctx.createGain();
+      modulator.frequency.value = 0.5; // LFO for dramatic feel
+      modGain.gain.value = 10;
+      modulator.connect(modGain);
+      modGain.connect(oscillator.frequency);
+      modulator.start();
+
+    } catch (e) {
+      console.error("Music start failed", e);
+    }
+  }, [muted]);
+
+  useEffect(() => {
+    if (state === 'playing' && !isAnswered) {
+      startDramaticMusic();
+    } else {
+      stopMusic();
+    }
+    return () => stopMusic();
+  }, [state, isAnswered, startDramaticMusic, stopMusic]);
   const [isWaitingForBuzz, setIsWaitingForBuzz] = useState(true);
   const [buzzingTeamIndex, setBuzzingTeamIndex] = useState<number | null>(null);
 
@@ -362,9 +427,9 @@ export default function App() {
       <div className="max-w-4xl mx-auto w-full">
         <button 
           onClick={() => setState('lobby')}
-          className="mb-8 flex items-center gap-2 text-slate-500 hover:text-slate-800 font-medium"
+          className="mb-8 flex items-center gap-2 text-slate-500 hover:text-slate-800 font-black text-xl"
         >
-          <ChevronRight className="rotate-180" /> Kembali ke Menu
+          <Home size={24} /> BERANDA
         </button>
         
         <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="bg-white rounded-3xl shadow-2xl p-10 space-y-8">
@@ -407,7 +472,10 @@ export default function App() {
 
   const Setup = () => (
     <div className="min-h-screen bg-indigo-600 flex items-center justify-center p-8">
-      <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white rounded-3xl p-10 max-w-xl w-full text-center space-y-8 shadow-2xl">
+      <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white rounded-3xl p-10 max-w-xl w-full text-center space-y-8 shadow-2xl relative">
+        <button onClick={() => setState('lobby')} className="absolute top-6 left-6 p-2 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors text-slate-600">
+           <Home size={20} />
+        </button>
         <h2 className="text-3xl font-bold text-slate-800">Persiapan Tim</h2>
         <div className="space-y-6">
           <div className="space-y-2 text-left">
@@ -446,8 +514,14 @@ export default function App() {
       <div className="min-h-screen bg-slate-100 flex flex-col">
         {/* Header - Stats */}
         <div className="bg-white shadow-md p-4 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-10">
-          <div className="flex gap-4">
-            <button onClick={resetGame} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors">
+          <div className="flex gap-2">
+            <button 
+              onClick={() => setState('lobby')} 
+              className="p-2 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors flex items-center gap-1 font-bold text-slate-600 px-3"
+            >
+              <Home size={18} /> <span className="hidden sm:inline">Beranda</span>
+            </button>
+            <button onClick={startNewGame} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors">
               <RotateCcw size={20} />
             </button>
             <button onClick={() => setMuted(!muted)} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors">
@@ -669,21 +743,30 @@ export default function App() {
            </div>
         </div>
 
-        <button 
-          onClick={() => {
-            setRound(round + 1);
-            setState('playing');
-            setIsAnswered(false);
-            setLastAnswerResult(null);
-            setTimeLeft(15);
-            setCurrentQuestionIndex(currentQuestionIndex + 1);
-            setIsWaitingForBuzz(true);
-            setBuzzingTeamIndex(null);
-          }}
-          className="bg-white text-black font-black text-3xl py-8 px-16 rounded-[2rem] shadow-[0_10px_0_0_rgba(100,100,100,1)] hover:shadow-[0_5px_0_0_rgba(100,100,100,1)] hover:translate-y-1 transition-all active:translate-y-2 active:shadow-none"
-        >
-          MAJU KE BABAK {round + 1}!
-        </button>
+        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <button 
+            onClick={() => {
+              setRound(round + 1);
+              setState('playing');
+              setIsAnswered(false);
+              setLastAnswerResult(null);
+              setTimeLeft(15);
+              setCurrentQuestionIndex(currentQuestionIndex + 1);
+              setIsWaitingForBuzz(true);
+              setBuzzingTeamIndex(null);
+            }}
+            className="bg-white text-black font-black text-3xl py-8 px-16 rounded-[2rem] shadow-[0_10px_0_0_rgba(100,100,100,1)] hover:shadow-[0_5px_0_0_rgba(100,100,100,1)] hover:translate-y-1 transition-all active:translate-y-2 active:shadow-none"
+          >
+            MAJU KE BABAK {round + 1}!
+          </button>
+          
+          <button 
+            onClick={() => setState('lobby')}
+            className="bg-slate-800 text-white font-black text-2xl py-8 px-12 rounded-[2rem] shadow-[0_10px_0_0_rgba(50,50,50,1)] hover:translate-y-1 transition-all active:translate-y-2 active:shadow-none"
+          >
+            BERANDA
+          </button>
+        </div>
       </motion.div>
     </div>
   );
@@ -719,12 +802,20 @@ export default function App() {
             </h3>
           </div>
 
-          <button 
-            onClick={resetGame}
-            className="group flex items-center justify-center gap-4 mx-auto bg-slate-800 hover:bg-slate-700 text-white font-black py-6 px-12 rounded-2xl text-2xl transform transition active:scale-95"
-          >
-            <RotateCcw className="group-hover:rotate-180 transition-transform duration-500" /> MAIN LAGI
-          </button>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <button 
+              onClick={resetGame}
+              className="group flex items-center justify-center gap-4 bg-slate-800 hover:bg-slate-700 text-white font-black py-6 px-12 rounded-2xl text-2xl transform transition active:scale-95 flex-1"
+            >
+              <RotateCcw className="group-hover:rotate-180 transition-transform duration-500" /> MAIN LAGI
+            </button>
+            <button 
+              onClick={() => setState('lobby')}
+              className="group flex items-center justify-center gap-4 bg-white border-4 border-slate-200 text-slate-800 font-black py-6 px-12 rounded-2xl text-2xl transform transition active:scale-95 flex-1"
+            >
+              <Home /> BERANDA
+            </button>
+          </div>
         </motion.div>
       </div>
     );
