@@ -142,48 +142,50 @@ const shuffle = <T,>(array: T[]): T[] => {
   return newArray;
 };
 
-const playSound = (type: 'correct' | 'wrong' | 'click' | 'tick') => {
+const playSound = (type: 'correct' | 'wrong' | 'click' | 'tick', ctx?: AudioContext | null) => {
+  if (!ctx) return;
   try {
-    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const oscillator = audioCtx.createOscillator();
-    const gainNode = audioCtx.createGain();
+    if (ctx.state === 'suspended') ctx.resume();
+    
+    const oscillator = ctx.createOscillator();
+    const gainNode = ctx.createGain();
 
     oscillator.connect(gainNode);
-    gainNode.connect(audioCtx.destination);
+    gainNode.connect(ctx.destination);
 
     if (type === 'correct') {
       oscillator.type = 'sine';
-      oscillator.frequency.setValueAtTime(523.25, audioCtx.currentTime); // C5
-      oscillator.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.1); // A5
-      gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+      oscillator.frequency.setValueAtTime(523.25, ctx.currentTime); 
+      oscillator.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.1); 
+      gainNode.gain.setValueAtTime(0.3, ctx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
       oscillator.start();
-      oscillator.stop(audioCtx.currentTime + 0.3);
+      oscillator.stop(ctx.currentTime + 0.4);
     } else if (type === 'wrong') {
       oscillator.type = 'sawtooth';
-      oscillator.frequency.setValueAtTime(150, audioCtx.currentTime); 
-      oscillator.frequency.exponentialRampToValueAtTime(50, audioCtx.currentTime + 0.3);
-      gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+      oscillator.frequency.setValueAtTime(150, ctx.currentTime); 
+      oscillator.frequency.exponentialRampToValueAtTime(50, ctx.currentTime + 0.3);
+      gainNode.gain.setValueAtTime(0.3, ctx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
       oscillator.start();
-      oscillator.stop(audioCtx.currentTime + 0.4);
+      oscillator.stop(ctx.currentTime + 0.5);
     } else if (type === 'click') {
       oscillator.type = 'sine';
-      oscillator.frequency.setValueAtTime(400, audioCtx.currentTime);
-      gainNode.gain.setValueAtTime(0.05, audioCtx.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+      oscillator.frequency.setValueAtTime(400, ctx.currentTime);
+      gainNode.gain.setValueAtTime(0.15, ctx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
       oscillator.start();
-      oscillator.stop(audioCtx.currentTime + 0.1);
+      oscillator.stop(ctx.currentTime + 0.1);
     } else if (type === 'tick') {
       oscillator.type = 'square';
-      oscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
-      gainNode.gain.setValueAtTime(0.02, audioCtx.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
+      oscillator.frequency.setValueAtTime(800, ctx.currentTime);
+      gainNode.gain.setValueAtTime(0.05, ctx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.05);
       oscillator.start();
-      oscillator.stop(audioCtx.currentTime + 0.05);
+      oscillator.stop(ctx.currentTime + 0.05);
     }
   } catch (e) {
-    console.warn("Audio Context not supported", e);
+    console.warn("Audio play failed", e);
   }
 };
 
@@ -207,6 +209,77 @@ export default function App() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const bgMusicNodeRef = useRef<OscillatorNode | null>(null);
   const bgGainNodeRef = useRef<GainNode | null>(null);
+  const musicIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const startDramaticMusic = useCallback(() => {
+    const ctx = ensureAudio();
+    if (muted) return;
+    try {
+      const oscillator = ctx.createOscillator();
+      const filter = ctx.createBiquadFilter();
+      const gain = ctx.createGain();
+      
+      const oscillator2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      
+      // Richer dramatic drone using Sawtooth + Lowpass Filter
+      oscillator.type = 'sawtooth';
+      oscillator.frequency.setValueAtTime(55, ctx.currentTime); 
+      
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(200, ctx.currentTime);
+      filter.Q.setValueAtTime(5, ctx.currentTime);
+      
+      gain.gain.setValueAtTime(0.08, ctx.currentTime);
+      gain2.gain.setValueAtTime(0.05, ctx.currentTime);
+      
+      oscillator.connect(filter);
+      filter.connect(gain);
+      gain.connect(ctx.destination);
+      
+      oscillator2.type = 'triangle';
+      oscillator2.frequency.setValueAtTime(110, ctx.currentTime);
+      oscillator2.connect(gain2);
+      gain2.connect(ctx.destination);
+      
+      oscillator.start();
+      oscillator2.start();
+
+      // Rhythmic "Heartbeat" Layer
+      const playHeartbeat = () => {
+        if (ctx.state === 'suspended') ctx.resume();
+        const kickOsc = ctx.createOscillator();
+        const kickGain = ctx.createGain();
+        
+        kickOsc.type = 'sine';
+        kickOsc.frequency.setValueAtTime(120, ctx.currentTime);
+        kickOsc.frequency.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+        
+        kickGain.gain.setValueAtTime(0.2, ctx.currentTime);
+        kickGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+        
+        kickOsc.connect(kickGain);
+        kickGain.connect(ctx.destination);
+        
+        kickOsc.start();
+        kickOsc.stop(ctx.currentTime + 0.5);
+      };
+
+      // Play double-beat every 2 seconds
+      musicIntervalRef.current = setInterval(() => {
+        playHeartbeat();
+        setTimeout(playHeartbeat, 400);
+      }, 2000);
+      
+      bgMusicNodeRef.current = oscillator;
+      bgGainNodeRef.current = gain;
+
+      (window as any)._extraOsc = oscillator2;
+
+    } catch (e) {
+      console.error("Music start failed", e);
+    }
+  }, [muted]);
 
   const stopMusic = useCallback(() => {
     if (bgMusicNodeRef.current) {
@@ -214,52 +287,16 @@ export default function App() {
       bgMusicNodeRef.current.disconnect();
       bgMusicNodeRef.current = null;
     }
-  }, []);
-
-  const startDramaticMusic = useCallback(() => {
-    if (muted) return;
-    try {
-      if (!audioContextRef.current) {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-      }
-      const ctx = audioContextRef.current;
-      if (ctx.state === 'suspended') {
-        ctx.resume();
-      }
-      
-      const oscillator = ctx.createOscillator();
-      const gain = ctx.createGain();
-      
-      oscillator.type = 'sine';
-      oscillator.frequency.setValueAtTime(60, ctx.currentTime);
-      
-      // Dramatic drone effect
-      oscillator.frequency.exponentialRampToValueAtTime(40, ctx.currentTime + 2);
-      oscillator.frequency.exponentialRampToValueAtTime(60, ctx.currentTime + 4);
-      
-      gain.gain.setValueAtTime(0.01, ctx.currentTime);
-      gain.gain.linearRampToValueAtTime(0.05, ctx.currentTime + 1);
-      
-      oscillator.connect(gain);
-      gain.connect(ctx.destination);
-      
-      oscillator.start();
-      bgMusicNodeRef.current = oscillator;
-      bgGainNodeRef.current = gain;
-      
-      // Auto-loop modulation
-      const modulator = ctx.createOscillator();
-      const modGain = ctx.createGain();
-      modulator.frequency.value = 0.5; // LFO for dramatic feel
-      modGain.gain.value = 10;
-      modulator.connect(modGain);
-      modGain.connect(oscillator.frequency);
-      modulator.start();
-
-    } catch (e) {
-      console.error("Music start failed", e);
+    if ((window as any)._extraOsc) {
+      (window as any)._extraOsc.stop();
+      (window as any)._extraOsc.disconnect();
+      (window as any)._extraOsc = null;
     }
-  }, [muted]);
+    if (musicIntervalRef.current) {
+      clearInterval(musicIntervalRef.current);
+      musicIntervalRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     if (state === 'playing' && !isAnswered) {
@@ -269,6 +306,16 @@ export default function App() {
     }
     return () => stopMusic();
   }, [state, isAnswered, startDramaticMusic, stopMusic]);
+  const ensureAudio = () => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    if (audioContextRef.current.state === 'suspended') {
+      audioContextRef.current.resume();
+    }
+    return audioContextRef.current;
+  };
+
   const [isWaitingForBuzz, setIsWaitingForBuzz] = useState(true);
   const [buzzingTeamIndex, setBuzzingTeamIndex] = useState<number | null>(null);
 
@@ -322,7 +369,7 @@ export default function App() {
     if (!isWaitingForBuzz || isAnswered) return;
     setBuzzingTeamIndex(teamIdx);
     setIsWaitingForBuzz(false);
-    if (!muted) playSound('click');
+    if (!muted) playSound('click', audioContextRef.current);
   };
 
   const submitAnswer = (answer: string) => {
@@ -349,7 +396,7 @@ export default function App() {
 
     setIsAnswered(true);
     setLastAnswerResult(isCorrect ? 'correct' : 'wrong');
-    if (!muted) playSound(isCorrect ? 'correct' : 'wrong');
+    if (!muted) playSound(isCorrect ? 'correct' : 'wrong', audioContextRef.current);
   };
 
   // Timer Effect
@@ -361,7 +408,7 @@ export default function App() {
             if (timerRef.current) clearInterval(timerRef.current);
             setIsAnswered(true);
             setLastAnswerResult('timeout');
-            if (!muted) playSound('wrong');
+            if (!muted) playSound('wrong', audioContextRef.current);
 
             if (buzzingTeamIndex !== null) {
               let scoreDelta = 0;
@@ -375,7 +422,7 @@ export default function App() {
             }
             return 0;
           }
-          if (prev <= 5 && !muted) playSound('tick');
+          if (prev <= 5 && !muted) playSound('tick', audioContextRef.current);
           return prev - 1;
         });
       }, 1000);
@@ -406,13 +453,13 @@ export default function App() {
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-12">
           <button 
-            onClick={() => { if (!muted) playSound('click'); startNewGame(); }}
+            onClick={() => { ensureAudio(); if (!muted) playSound('click', audioContextRef.current); startNewGame(); }}
             className="group relative bg-yellow-400 hover:bg-yellow-300 text-blue-900 font-bold py-6 px-10 rounded-2xl text-2xl shadow-xl transition-all hover:scale-105 active:scale-95 flex items-center justify-center gap-3"
           >
             <Play fill="currentColor" /> MULAI GAME
           </button>
           <button 
-            onClick={() => { if (!muted) playSound('click'); setState('instructions'); }}
+            onClick={() => { ensureAudio(); if (!muted) playSound('click', audioContextRef.current); setState('instructions'); }}
             className="bg-white/10 hover:bg-white/20 text-white font-bold py-6 px-10 rounded-2xl text-2xl backdrop-blur-md border border-white/30 transition-all hover:scale-105 active:scale-95 flex items-center justify-center gap-3"
           >
             <Info /> PETUNJUK
